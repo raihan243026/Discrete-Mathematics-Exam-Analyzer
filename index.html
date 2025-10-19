@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discrete Mathematics Exam Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Scholarly Neutrals -->
+    <!-- Application Structure Plan: The application is designed as an interactive dashboard. This structure was chosen over a linear document to provide a hierarchical data exploration experience, ideal for studying. The user starts with high-level aggregate insights (key metrics and charts) and can then use interactive filters to drill down into specific questions. This allows students to instantly analyze topic frequency, mark distribution, and question types based on their study needs, making preparation more efficient and targeted. -->
+    <!-- Visualization & Content Choices: 
+        1. Key Metrics: Report Info (total questions, common questions) -> Goal (Inform) -> Presentation (HTML/CSS Cards) -> Interaction (None) -> Justification (Provides an immediate, high-level summary).
+        2. Topic Frequency: Report Info (Count of questions per topic) -> Goal (Compare) -> Viz (Bar Chart) -> Interaction (Hover for details, click to filter) -> Justification (Bar charts are best for comparing counts across discrete categories) -> Library (Chart.js/Canvas).
+        3. Mark Distribution: Report Info (Sum of marks per topic) -> Goal (Compare Proportions) -> Viz (Donut Chart) -> Interaction (Hover for details, click to filter) -> Justification (Donut charts excel at showing part-to-whole relationships) -> Library (Chart.js/Canvas).
+        4. Question List: Report Info (Full question details) -> Goal (Organize/Inform) -> Presentation (Dynamic HTML/CSS Grid) -> Interaction (Filters update the list content) -> Justification (Provides detailed, filterable data on demand) -> Library (Vanilla JS).
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f7f4;
+            color: #4a4a4a;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 350px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+                max-height: 400px;
+            }
+        }
+        .active-filter {
+            /* Tailwind classes override default button background and text color for active state */
+            background-color: #435585 !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .question-card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .question-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-bold text-[#363062]">Discrete Mathematics Exam Analyzer</h1>
+            <p class="mt-3 text-lg text-gray-600 max-w-3xl mx-auto">An interactive dashboard to explore question patterns from past midterms (2023-2025) for course CCE-2307.</p>
+        </header>
+
+        <main>
+            <!-- Key Metrics: Stacks on mobile, 3 columns on tablet/desktop (md:grid-cols-3) -->
+            <section id="key-metrics" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200 text-center">
+                    <h3 class="text-xl font-semibold text-gray-500">Total Questions Analyzed</h3>
+                    <p id="total-questions" class="text-4xl font-bold text-[#435585] mt-2">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200 text-center">
+                    <h3 class="text-xl font-semibold text-gray-500">"Common" Questions</h3>
+                    <p id="common-questions" class="text-4xl font-bold text-[#435585] mt-2">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200 text-center">
+                    <h3 class="text-xl font-semibold text-gray-500">"Important" Topics</h3>
+                    <p id="important-topics" class="text-4xl font-bold text-[#435585] mt-2">0</p>
+                </div>
+            </section>
+
+            <!-- Charts Section: Stacks on mobile, 2 columns on tablet/desktop (md:grid-cols-2) for better responsiveness -->
+            <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                    <h2 class="text-2xl font-bold text-center mb-4 text-[#363062]">Question Frequency by Topic</h2>
+                    <p class="text-center text-gray-600 mb-4 text-sm">This chart shows the number of questions that have appeared for each major topic. Use this to identify the most frequently tested areas.</p>
+                    <div class="chart-container">
+                        <canvas id="topicFrequencyChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                    <h2 class="text-2xl font-bold text-center mb-4 text-[#363062]">Mark Distribution by Topic</h2>
+                     <p class="text-center text-gray-600 mb-4 text-sm">This chart illustrates the percentage of total marks allocated to each topic, highlighting areas with the highest scoring potential.</p>
+                    <div class="chart-container">
+                        <canvas id="marksDistributionChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-2xl font-bold text-center mb-6 text-[#363062]">Explore All Questions</h2>
+                <!-- Filters: Uses flex-wrap to stack filter groups and buttons on smaller screens -->
+                <div id="filters" class="flex flex-wrap items-center justify-center gap-4 mb-8">
+                    <div class="flex flex-wrap justify-center gap-2" id="topic-filters">
+                        <button data-filter="All" class="filter-btn topic-filter active-filter px-4 py-2 bg-gray-200 text-gray-700 rounded-full font-semibold transition">All Topics</button>
+                        <button data-filter="Sets & Operations" class="filter-btn topic-filter px-4 py-2 bg-gray-200 text-gray-700 rounded-full font-semibold transition">Sets</button>
+                        <button data-filter="Functions & Relations" class="filter-btn topic-filter px-4 py-2 bg-gray-200 text-gray-700 rounded-full font-semibold transition">Functions</button>
+                        <button data-filter="Logic & Quantifiers" class="filter-btn topic-filter px-4 py-2 bg-gray-200 text-gray-700 rounded-full font-semibold transition">Logic</button>
+                    </div>
+                     <div class="flex flex-wrap justify-center gap-2" id="status-filters">
+                        <button data-filter="All" class="filter-btn status-filter active-filter px-4 py-2 bg-gray-200 text-gray-700 rounded-full font-semibold transition">All Statuses</button>
+                        <button data-filter="Common" class="filter-btn status-filter px-4 py-2 bg-gray-200 text-gray-700 rounded-full font-semibold transition">Common</button>
+                        <button data-filter="Important" class="filter-btn status-filter px-4 py-2 bg-gray-200 text-gray-700 rounded-full font-semibold transition">Important</button>
+                    </div>
+                    <div>
+                        <select id="semester-filter" class="filter-btn semester-filter p-2 border border-gray-300 rounded-full font-semibold bg-white">
+                            <option value="All">All Semesters</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Question List: Scales from 1 column (mobile) to 2 (tablet) to 3 (desktop) -->
+                <div id="question-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                </div>
+                 <p id="no-results" class="text-center text-gray-500 py-10 text-lg hidden">No questions match the selected filters.</p>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const questionData = [
+            { id: 1.1, topic: "Sets & Operations", text: "Discuss about different types of sets with example.", marks: 6, semester: "Spring 2025", status: "Important" },
+            { id: 1.2, topic: "Sets & Operations", text: "Find the following sets and their bit strings. Let U = {0,1,...,9}, A = {2,4,6,8}, B = {1,3,5,7,9}, C = {2,3,5,7}. Find: i) A′, ii) B ∪ C, iii) (A ∪ B) ∩ C, iv) (A ∩ B ∩ C).", marks: 4, semester: "Spring 2025", status: "Common" },
+            { id: 1.3, topic: "Sets & Operations", text: "Implement Distributive Laws on the following sets: A = {1,2,3}, B = {3,4,5}, C = {3,5,6}.", marks: 6, semester: "Spring 2024", status: "" },
+            { id: 1.4, topic: "Sets & Operations", text: "Prove that: i) A ∪ B = B ∪ A for A = {1,2} & B = {2,3,4}, ii) A ∩ B = B ∩ A for A = {1,2,3} & B = {2,5,6,7}.", marks: 4, semester: "Spring 2024", status: "" },
+            { id: 1.5, topic: "Sets & Operations", text: "**Prove De Morgan's Laws:** i) (A ∪ B)′ = A′ ∩ B′ and ii) (A ∩ B)′ = A′ ∪ B′ for U = {1,...,9}, A = {2,4,6,8}, B = {2,3,5,7}.", marks: 6, semester: "Autumn 2023", status: "Common" },
+            { id: 1.6, topic: "Sets & Operations", text: "Find the sets and bit strings of O ∪ P, U - P, E′ and E ∪ (O ∪ P) for U = {0,1,...,9}, E = {2,4,6,8}, O = {1,3,5,7,9}, P = {2,3,5,7}.", marks: 4, semester: "Autumn 2023", status: "Common" },
+            { id: 1.7, topic: "Sets & Operations", text: "Define Discrete Mathematics. Write down some applications of it.", marks: 3, semester: "Spring 2023", status: "" },
+            { id: 1.8, topic: "Sets & Operations", text: "Use set builder notation to describe the given sets: i) A = {1,4,9,16,25,......}, ii) B = {2,4,8,16,32}.", marks: 3, semester: "Spring 2023", status: "" },
+            { id: 1.9, topic: "Sets & Operations", text: "**Prove De Morgan's Laws:** i) (A ∪ B)′ = A′ ∩ B′ ii) (A ∩ B)′ = A′ ∪ B′ for U = {1,...,9}, A = {2,4,6,8}, B = {2,3,5,7}.", marks: 4, semester: "Spring 2023", status: "Common" },
+            { id: 2.1, topic: "Functions & Relations", text: "Describe different types of relations with example. (OR Q3.a)", marks: 5, semester: "Spring 2025", status: "Important" },
+            { id: 2.2, topic: "Functions & Relations", text: "Find out if the function f: R ↔ R, f(x) = 2x² - 5x + 1 is one to one function?", marks: 5, semester: "Spring 2025", status: "" },
+            { id: 2.3, topic: "Functions & Relations", text: "Which one is one-one into function? i) f = {(1,a),(2,b),(3,c),(4,b)} ii) f = {(1,a),(2,b),(3,d)}", marks: 5, semester: "Spring 2025", status: "" },
+            { id: 2.4, topic: "Functions & Relations", text: "Justify whether these two functions are one-one-onto or not: f = {(1,a), (2, c), (3, b), (4, d)}, g = {(1,a), (2, b), (3, b), (4.d)}.", marks: 4, semester: "Spring 2024", status: "Important" },
+            { id: 2.5, topic: "Functions & Relations", text: "Classify whether these functions (if defined) are injective or not. (Multiple specific mappings given)", marks: 6, semester: "Spring 2024", status: "Common" },
+            { id: 2.6, topic: "Functions & Relations", text: "Define injective, surjective, bijective and one-one into functions.", marks: 4, semester: "Autumn 2023", status: "Common" },
+            { id: 2.7, topic: "Functions & Relations", text: "Classify whether these functions (if defined) are injective or not. (Multiple specific mappings given)", marks: 6, semester: "Autumn 2023", status: "Common" },
+            { id: 2.8, topic: "Functions & Relations", text: "Define Functions. Explain different types of functions with example.", marks: 6, semester: "Spring 2023", status: "Common" },
+            { id: 2.9, topic: "Functions & Relations", text: "Show that the function f: R → R, given by f(x) = 2x, is one-one and onto.", marks: 4, semester: "Spring 2023", status: "Important" },
+            { id: 3.1, topic: "Logic & Quantifiers", text: "Determine whether each these conditional and biconditional statement is true or false? (Four specific examples given)", marks: 6, semester: "Spring 2025", status: "" },
+            { id: 3.2, topic: "Logic & Quantifiers", text: "**Show logical equivalence of Contrapositive:** Show that conditional statement p ↔ q and its contra positive are logically equivalent.", marks: 4, semester: "Spring 2025", status: "Common" },
+            { id: 3.3, topic: "Logic & Quantifiers", text: "**Truth Values for Quantifiers:** Let P(x) be the statement x = x². What are the truth values of Universal and Existential quantifier for i) P(0), ii) P(2), iii) P(1), iv) P(-1). (OR Q3.b)", marks: 5, semester: "Spring 2025", status: "Important" },
+            { id: 3.4, topic: "Logic & Quantifiers", text: "**Prove Contrapositive Equivalence (Tautology):** Prove that, the statement (p → q) ↔ (~q → ~p) is a tautology.", marks: 5, semester: "Spring 2024", status: "Common" },
+            { id: 3.5, topic: "Logic & Quantifiers", text: "Show the truth table for the derived connector **NAND**.", marks: 3, semester: "Spring 2024", status: "Important" },
+            { id: 3.6, topic: "Logic & Quantifiers", text: "Show that proposition (p ↔ q) ≅ (p → q) ∧ (q → p). (OR Q3.a)", marks: 5, semester: "Spring 2024", status: "Important" },
+            { id: 3.7, topic: "Logic & Quantifiers", text: "Show the truth table for the derived connector **XOR**.", marks: 3, semester: "Spring 2024", status: "Important" },
+            { id: 3.8, topic: "Logic & Quantifiers", text: "**Truth Value for Universal Quantifier:** Let, Q(x) be the statement \"x < 2\". Justify the truth values of ∀x Q(x) where the domain consists of all real numbers. (OR Q3.c)", marks: 2, semester: "Spring 2024", status: "Common" },
+            { id: 3.9, topic: "Logic & Quantifiers", text: "**Show logical equivalence of Contrapositive:** Show that p → q and its contra positive ~q → ~p are logically equivalent.", marks: 5, semester: "Autumn 2023", status: "Common" },
+            { id: 3.10, topic: "Logic & Quantifiers", text: "Prove that X ⊕ Y ≅ (X ∧ ¬Y) ∨ (¬X ∧ Y).", marks: 4, semester: "Autumn 2023", status: "Important" },
+            { id: 3.11, topic: "Logic & Quantifiers", text: "Show that proposition q → p, and ~p → ~q is not equivalent to p → q. (OR Q3.a)", marks: 4, semester: "Autumn 2023", status: "" },
+            { id: 3.12, topic: "Logic & Quantifiers", text: "**Truth Value for Universal Quantifier:** Let, Q(x) be the statement \"x < 2\". Justify the truth values of ∀x Q(x) where the domain consists of all real numbers. (OR Q3.d)", marks: 2, semester: "Autumn 2023", status: "Common" },
+            { id: 3.13, topic: "Logic & Quantifiers", text: "Define Propositional Logic. Convert the following sentence into logical expression: \"You can access the internet from campus only if you are a computer science major or you are not a freshman.\"", marks: 5, semester: "Spring 2023", status: "Important" },
+            { id: 3.14, topic: "Logic & Quantifiers", text: "Define Predicate and Quantifiers. Convert the following statements into mathematical statements using predicate logic: \"Every person who is 18 years or older, is eligible to vote.\"", marks: 5, semester: "Spring 2023", status: "Important" },
+            { id: 3.15, topic: "Logic & Quantifiers", text: "Define sets. Explain the representations of sets with example. (OR Q3.a)", marks: 4, semester: "Spring 2023", status: "Important" },
+            { id: 3.16, topic: "Logic & Quantifiers", text: "Find the bit string for: i) A ∪ B, ii) A ∩ B, iii) U ∩ (A ∪ B) for U = {1,...,10}, A = {1,...,5}, B = {1,3,5,7,9}. (OR Q3.b)", marks: 6, semester: "Spring 2023", status: "Common" }
+        ];
+
+        let topicChart, marksChart;
+        let filters = { topic: 'All', status: 'All', semester: 'All' };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            populateSemesterFilter();
+            initializeCharts();
+            updateDashboard();
+
+            document.querySelectorAll('.topic-filter').forEach(button => button.addEventListener('click', (e) => setFilter(e, 'topic')));
+            document.querySelectorAll('.status-filter').forEach(button => button.addEventListener('click', (e) => setFilter(e, 'status')));
+            document.getElementById('semester-filter').addEventListener('change', (e) => {
+                filters.semester = e.target.value;
+                updateDashboard();
+            });
+        });
+
+        function setFilter(event, filterType) {
+            const button = event.target;
+            filters[filterType] = button.dataset.filter;
+            document.querySelectorAll(`.${filterType}-filter`).forEach(btn => btn.classList.remove('active-filter'));
+            button.classList.add('active-filter');
+            updateDashboard();
+        }
+
+        function populateSemesterFilter() {
+            const semesters = [...new Set(questionData.map(q => q.semester))];
+            const select = document.getElementById('semester-filter');
+            semesters.sort().reverse().forEach(semester => {
+                const option = document.createElement('option');
+                option.value = semester;
+                option.textContent = semester;
+                select.appendChild(option);
+            });
+        }
+
+        function filterData() {
+            return questionData.filter(q => 
+                (filters.topic === 'All' || q.topic === filters.topic) &&
+                (filters.status === 'All' || q.status === filters.status) &&
+                (filters.semester === 'All' || q.semester === filters.semester)
+            );
+        }
+
+        function updateDashboard() {
+            const filteredQuestions = filterData();
+            updateKeyMetrics(); 
+            updateCharts(filteredQuestions);
+            renderQuestionList(filteredQuestions);
+        }
+
+        function updateKeyMetrics() {
+            document.getElementById('total-questions').textContent = questionData.length;
+            document.getElementById('common-questions').textContent = questionData.filter(q => q.status === 'Common').length;
+            document.getElementById('important-topics').textContent = questionData.filter(q => q.status === 'Important').length;
+        }
+
+        function renderQuestionList(questions) {
+            const listElement = document.getElementById('question-list');
+            const noResultsElement = document.getElementById('no-results');
+            listElement.innerHTML = '';
+            if (questions.length === 0) {
+                noResultsElement.classList.remove('hidden');
+                return;
+            }
+            noResultsElement.classList.add('hidden');
+            
+            questions.forEach(q => {
+                const statusBadge = q.status ? `<span class="absolute top-3 right-3 text-xs font-semibold px-2.5 py-1 rounded-full ${q.status === 'Common' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">${q.status}</span>` : '';
+                const card = `
+                    <div class="question-card bg-gray-50 border border-gray-200 rounded-lg p-5 flex flex-col relative h-full">
+                        ${statusBadge}
+                        <p class="text-sm font-medium text-[#435585] mb-2">${q.topic}</p>
+                        <p class="text-base text-gray-700 flex-grow">${q.text}</p>
+                        <div class="flex justify-between items-center mt-4 pt-4 border-t border-gray-200">
+                            <span class="text-sm font-semibold text-gray-500">${q.semester}</span>
+                            <span class="text-lg font-bold text-[#363062]">${q.marks} Marks</span>
+                        </div>
+                    </div>
+                `;
+                listElement.innerHTML += card;
+            });
+        }
+
+        function initializeCharts() {
+            const topicCtx = document.getElementById('topicFrequencyChart').getContext('2d');
+            topicChart = new Chart(topicCtx, {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Question Count', data: [], backgroundColor: '#818FB4', borderRadius: 5 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            });
+
+            const marksCtx = document.getElementById('marksDistributionChart').getContext('2d');
+            marksChart = new Chart(marksCtx, {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ label: 'Total Marks', data: [], backgroundColor: ['#435585', '#818FB4', '#B4C5E4'] }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        function updateCharts(data) {
+            const topics = [...new Set(questionData.map(q => q.topic))];
+            
+            const topicCounts = topics.reduce((acc, topic) => {
+                acc[topic] = data.filter(q => q.topic === topic).length;
+                return acc;
+            }, {});
+            
+            const topicMarks = topics.reduce((acc, topic) => {
+                acc[topic] = data.filter(q => q.topic === topic).reduce((sum, q) => sum + q.marks, 0);
+                return acc;
+            }, {});
+
+            topicChart.data.labels = Object.keys(topicCounts);
+            topicChart.data.datasets[0].data = Object.values(topicCounts);
+            topicChart.update();
+
+            marksChart.data.labels = Object.keys(topicMarks);
+            marksChart.data.datasets[0].data = Object.values(topicMarks);
+            marksChart.update();
+        }
+    </script>
+</body>
+</html>
